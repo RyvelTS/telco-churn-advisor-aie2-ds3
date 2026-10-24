@@ -1,0 +1,65 @@
+# Environment variables & secrets (passed dynamically at runtime via docker-compose)
+.env
+*.env
+!.env.example
+.env.local
+.env.test
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python cache & compiled binaries
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+
+# Pytest & testing artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Local databases & journal files (mounted via volume or generated via pipeline)
+data/*.db
+data/telecom.db
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# IDE & OS files
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db
+*.swp
+*.swo
+
+# Jupyter notebooks, training logs & generated outputs
+notebooks/
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+*-checkpoint.ipynb
+*.nbconvert.*
+.jupyter_cache/
+catboost_info/
+.catboost_info/
+mlruns/
+.mlflow/
