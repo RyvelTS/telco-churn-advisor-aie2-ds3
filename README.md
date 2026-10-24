@@ -317,6 +317,13 @@ To shut down:
 docker compose down
 ```
 
+### Telecom Churn Advisor (AIE2-DS3)
+
+[![Live Demo](https://img.shields.io/badge/Azure%20Container%20Apps-Live%20Demo-0078D4?logo=microsoftazure)](https://telco-churn-advisor-aie2-ds3.ambitiousstone-ef0ac4e4.indonesiacentral.azurecontainerapps.io/)
+
+> **Live Application URL:** https://telco-churn-advisor-aie2-ds3.ambitiousstone-ef0ac4e4.indonesiacentral.azurecontainerapps.io/
+> _Note: Configured on serverless Consumption tier with scale-to-zero (`minReplicas = 0`). The first page load may take ~20 seconds to boot the container._
+
 ---
 
 ## 7. Evaluation Rubric Mapping Table
