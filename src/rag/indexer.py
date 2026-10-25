@@ -219,5 +219,56 @@ def index_documents(docs_dir: Optional[Union[str, Path]] = None) -> int:
     return len(chunks)
 
 
+def is_index_populated() -> bool:
+    """Checks whether the configured Azure AI Search index exists and contains documents.
+
+    Returns:
+        bool: True if index exists and contains documents; False otherwise.
+    """
+    from src.config import validate_azure_credentials
+
+    if not validate_azure_credentials()["valid"]:
+        return False
+
+    try:
+        embeddings = get_azure_embeddings()
+        vector_store = get_azure_search_vectorstore(embeddings)
+        probe = vector_store.similarity_search("retention discount policy", k=1)
+        return len(probe) > 0
+    except Exception:
+        return False
+
+
+def ensure_index_ready(docs_dir: Optional[Union[str, Path]] = None) -> bool:
+    """Smart, idempotent RAG index initializer for local or clean-clone deployments.
+
+    - If Azure credentials are not configured: skips gracefully without crashing.
+    - If Azure AI Search index already contains documents: skips indexing (0 duplicates, 0 extra tokens).
+    - If Azure AI Search index is empty or unprovisioned: loads, chunks, embeds, and indexes policy documents.
+
+    Args:
+        docs_dir (Optional[Union[str, Path]]): Document directory. Defaults to DOCS_DIR.
+
+    Returns:
+        bool: True if index is ready or successfully populated; False if credentials missing or indexing failed.
+    """
+    from src.config import validate_azure_credentials
+
+    creds = validate_azure_credentials()
+    if not creds["valid"]:
+        return False
+
+    try:
+        if is_index_populated():
+            return True
+
+        print(f"[Info] Initializing unpopulated Azure Search index '{AZURE_SEARCH_INDEX_NAME}'...")
+        count = index_documents(docs_dir=docs_dir)
+        return count > 0
+    except Exception as err:
+        print(f"[Warning] RAG index auto-initialization skipped: {err}")
+        return False
+
+
 if __name__ == "__main__":
     index_documents()

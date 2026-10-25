@@ -19,6 +19,7 @@ Customer churn in telecommunications causes recurring revenue loss and inefficie
 - **Cost-Sensitive Decision Boundaries**: Solves the financial asymmetry between customer lifetime value and retention costs by applying a cost-optimal decision threshold of 0.17.
 - **Autonomous Policy Reasoning**: Uses an autonomous agent driven by Azure OpenAI, grounded in company retention manuals and discount matrices indexed in **Azure AI Search**.
 - **Sandwich Guardrail Architecture**: Implements a two-stage input and output security layer that screens for prompt injection, out-of-domain queries, and unauthorized concession commitments.
+- **Privacy & PII Protection**: Protects customer data by stripping contact details and utilizing surrogate tokenization (`[CUSTOMER_NAME]`) so real PII is never transmitted to cloud LLM APIs, with seamless client-side re-hydration.
 - **Frontline Operational Console**: A two-column interactive Streamlit dashboard that pairs customer risk indicators with an AI assistant.
 
 ---
@@ -277,8 +278,9 @@ Execute the automated pipeline to transform raw data into the SQLite CRM databas
 # Clean data, enrich synthetic CRM identities, and generate data/telecom.db
 python run_pipeline.py
 
-# (Optional) Re-index policy manuals to Azure AI Search
-python -c "from src.rag.indexer import index_documents; index_documents()"
+# (Optional) Verify or explicitly re-index policy manuals to Azure AI Search
+# Note: The application also auto-verifies and provisions the index lazily on first query!
+python -m src.rag.indexer
 ```
 
 ### Step 4: Launch Streamlit Operational Dashboard
@@ -311,6 +313,13 @@ docker compose logs -f
 
 Access the operational dashboard at `http://localhost:8501`.
 
+> **Clean-Clone Setup:** The container image automatically includes the pre-processed SQLite database. When Azure credentials are provided in `.env`, the Azure AI Search knowledge base is automatically verified and populated idempotently on first use.
+> To explicitly run RAG indexing via Docker Compose at any time:
+>
+> ```bash
+> docker compose --profile setup run --rm rag-indexer
+> ```
+
 To shut down:
 
 ```bash
@@ -330,16 +339,16 @@ docker compose down
 
 This table maps each project certification requirement to its implementation in the codebase:
 
-| Bootcamp Rubric Criteria             | Implemented Module / File                           | Implementation Summary                                                                                                                                   |
-| :----------------------------------- | :-------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Modular Data Pipeline**            | `src/data/cleaner/`                                 | OOP Strategy Pattern implementing `BaseCleaner`, standardizing data types, handling outliers, and normalizing text.                                      |
-| **Pipeline Runner & Storage**        | `src/data/pipeline.py`, `src/data/database.py`      | Orchestrates cleaning workflow, enriches records with Faker synthetic CRM contacts, and persists to SQLite with indexed lookups.                         |
-| **Model Evaluation & Tuning**        | `src/models/predictor.py`                           | Deserializes model bundle, applies cost-optimal threshold (cutoff: 0.17), and bins probabilities into 4 risk tiers.                                      |
-| **Vector Store & Hybrid RAG**        | `src/rag/indexer.py`, `src/rag/retriever.py`        | Heterogeneous document loader (PDF, Markdown), recursive semantic chunking, and Azure AI Search vector store integration.                                |
-| **Tool-Calling Agent Orchestration** | `src/agent/advisor_agent.py`, `src/agent/tools.py`  | Multi-turn LangGraph agent with persistent `MemorySaver` checkpointer and dynamic SQLite/ML/RAG tool integrations.                                       |
-| **Adversarial Security & Defense**   | `src/agent/guardrails.py`, `src/agent/prompts.py`   | State-Envelope Sandwich Guardrails decoupling prompt injection from conversational intent, output concession capping (<= 150 USD), and static fallbacks. |
-| **Automated Testing Suite**          | `tests/`                                            | 38 unit, integration, and security tests covering cleaners, predictor schemas, RAG ingestion, and prompt injection defense.                              |
-| **Containerization & Deployment**    | `Dockerfile`, `docker-compose.yml`, `entrypoint.sh` | Debian-slim multi-stage Docker container with non-root security context, self-healing entrypoint, and local Docker Compose orchestration.                |
+| Bootcamp Rubric Criteria             | Implemented Module / File                          | Implementation Summary                                                                                                                                             |
+| :----------------------------------- | :------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Modular Data Pipeline**            | `src/data/cleaner/`                                | OOP Strategy Pattern implementing `BaseCleaner`, standardizing data types, handling outliers, and normalizing text.                                                |
+| **Pipeline Runner & Storage**        | `src/data/pipeline.py`, `src/data/database.py`     | Orchestrates cleaning workflow, enriches records with Faker synthetic CRM contacts, and persists to SQLite with indexed lookups.                                   |
+| **Model Evaluation & Tuning**        | `src/models/predictor.py`                          | Deserializes model bundle, applies cost-optimal threshold (cutoff: 0.17), and bins probabilities into 4 risk tiers.                                                |
+| **Vector Store & Hybrid RAG**        | `src/rag/indexer.py`, `src/rag/retriever.py`       | Heterogeneous document loader (PDF, Markdown), recursive semantic chunking, idempotent auto-provisioning, and Azure AI Search vector store integration.            |
+| **Tool-Calling Agent Orchestration** | `src/agent/advisor_agent.py`, `src/agent/tools.py` | Multi-turn LangGraph agent with persistent `MemorySaver` checkpointer and dynamic SQLite/ML/RAG tool integrations.                                                 |
+| **Adversarial Security & Defense**   | `src/agent/guardrails.py`, `src/agent/prompts.py`  | State-Envelope Sandwich Guardrails decoupling prompt injection from conversational intent, output concession capping (<= 150 USD), and PII surrogate tokenization. |
+| **Automated Testing Suite**          | `tests/`                                           | 42 unit, integration, and security tests covering cleaners, predictor schemas, RAG ingestion, PII de-tokenization, and prompt injection defense.                   |
+| **Containerization & Deployment**    | `Dockerfile`, `docker-compose.yml`                 | Debian-slim container with pre-built pipeline database, Docker Compose clean-clone setup, and automated Azure Container Apps CI/CD deployment.                     |
 
 ---
 
@@ -354,7 +363,6 @@ This table maps each project certification requirement to its implementation in 
 ├── README.md
 ├── app.py                                # Streamlit two-column operational console
 ├── docker-compose.yml                    # Local multi-container orchestration
-├── entrypoint.sh                         # Container startup & SQLite self-healing script
 ├── requirements.txt                      # Pinned Python package dependencies
 ├── run_pipeline.py                       # CLI execution entrypoint for data pipeline
 ├── artifacts/
@@ -392,7 +400,7 @@ This table maps each project certification requirement to its implementation in 
 
 ## Team Information
 
-**Team Name:** Hello World AI  
+**Team Name:** Hello World AI
 **Program:** Digital Skola — Fullstack AI Engineer
 
 ### Team Members

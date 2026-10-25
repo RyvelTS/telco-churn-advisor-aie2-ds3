@@ -9,7 +9,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/data
+      - ./data/docs:/app/data/docs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
@@ -17,3 +17,16 @@ services:
       timeout: 10s
       start_period: 15s
       retries: 3
+
+  rag-indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telecom-rag-indexer
+    entrypoint: ["python", "-m", "src.rag.indexer"]
+    env_file:
+      - .env
+    volumes:
+      - ./data/docs:/app/data/docs
+    profiles:
+      - setup

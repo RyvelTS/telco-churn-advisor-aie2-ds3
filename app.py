@@ -85,6 +85,11 @@ st.markdown(
 # ==============================================================================
 @st.cache_resource(show_spinner="Loading retention advisor...")
 def get_agent() -> TelecomAdvisorAgent:
+    try:
+        from src.rag.indexer import ensure_index_ready
+        ensure_index_ready()
+    except Exception:
+        pass
     return TelecomAdvisorAgent()
 
 
