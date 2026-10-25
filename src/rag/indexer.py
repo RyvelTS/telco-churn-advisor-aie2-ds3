@@ -99,7 +99,7 @@ def load_policy_documents(docs_dir: Union[str, Path]) -> List[Document]:
             txt_docs = txt_loader.load()
             for doc in txt_docs:
                 if "page" not in doc.metadata:
-                    doc.metadata["page"] = 1
+                    doc.metadata["page"] = 0
             documents.extend(txt_docs)
         except Exception as e:
             print(f"[Warning] Text loader for '{pattern}' encountered an error: {e}")

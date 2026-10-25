@@ -3,6 +3,7 @@
 Operational Streamlit Dashboard for Customer Service Representatives and Retention Specialists.
 """
 
+import time
 from typing import Any, Dict
 import pandas as pd
 import streamlit as st
@@ -10,6 +11,11 @@ import streamlit as st
 from src.agent.advisor_agent import TelecomAdvisorAgent
 from src.data.database import CustomerRepository
 from src.models.predictor import ChurnPredictor
+
+
+# Session Rate Limiting Constants (UX cooldown & token exhaustion defense)
+COOLDOWN_SECONDS = 3.0          # Minimum gap between user turns
+MAX_PROMPTS_PER_MINUTE = 6     # Maximum turns per minute per session
 
 
 # ==============================================================================
@@ -130,6 +136,9 @@ if "chat_history" not in st.session_state:
 
 if "last_synced_id" not in st.session_state:
     st.session_state.last_synced_id = None
+
+if "request_timestamps" not in st.session_state:
+    st.session_state.request_timestamps = []
 
 
 # ==============================================================================
@@ -336,67 +345,136 @@ with col2:
         "Policy answers should be verified against source documents."
     )
 
+    def render_policy_citation_cards(sources: list):
+        """Formats raw RAG policy chunks into structured citation cards displaying document source and page number."""
+        import re
+
+        all_chunks = []
+        for src in sources:
+            parts = [p.strip() for p in re.split(r"\n*---\n*", str(src)) if p.strip()]
+            all_chunks.extend(parts)
+
+        pattern = re.compile(
+            r"\[Policy Excerpt \d+ \(Source:\s*(.+?)(?:,\s*Page:\s*-?\d+)?\)\]:\s*([\s\S]+)",
+            re.IGNORECASE,
+        )
+
+        for i, chunk in enumerate(all_chunks, 1):
+            match = pattern.match(chunk)
+            if match:
+                doc_name, content_text = match.groups()
+                badge_html = (
+                    f"<div style='margin-bottom: 4px;'>"
+                    f"<span style='font-weight: 700; color: #2d3c3a; font-size: 0.88rem;'>📄 <code>{doc_name}</code></span>"
+                    f"</div>"
+                )
+                st.markdown(badge_html, unsafe_allow_html=True)
+                st.markdown(f"> {content_text.strip()}")
+                if i < len(all_chunks):
+                    st.markdown("<hr style='margin: 8px 0; border: none; border-top: 1px dashed #dfe7e3;'/>", unsafe_allow_html=True)
+            else:
+                st.markdown(chunk)
+
     # 1. Render Chat History
     chat_container = st.container(height=430)
     with chat_container:
         for msg in st.session_state.chat_history:
             role = msg["role"]
             content = msg["content"]
+            sources = msg.get("sources", [])
             with st.chat_message(role):
                 st.markdown(content)
+                if role == "assistant" and sources:
+                    with st.expander("📄 Retrieved Policy Excerpts (RAG)", expanded=False):
+                        render_policy_citation_cards(sources)
 
     # 2. Interactive Input Box
     user_prompt = st.chat_input("Ask about churn risk or retention policies...")
 
     if user_prompt:
-        # Display user message immediately
-        st.session_state.chat_history.append({"role": "user", "content": user_prompt})
-        with chat_container:
-            with st.chat_message("user"):
-                st.markdown(user_prompt)
+        now = time.time()
 
-            # 3. Formulate Query with Active Context
-            # If user didn't mention customer ID, attach it as context for agent
-            if active_id not in user_prompt:
-                agent_query = (
-                    f"[Active Customer Context: Account ID '{active_id}', "
-                    f"Name: {customer_record.get('full_name', '')}]\n"
-                    f"{user_prompt}"
+        # 1. Purge timestamps older than 60 seconds
+        st.session_state.request_timestamps = [
+            t for t in st.session_state.request_timestamps if now - t < 60
+        ]
+
+        # 2. Check burst frequency limit (max 6 requests/minute)
+        if len(st.session_state.request_timestamps) >= MAX_PROMPTS_PER_MINUTE:
+            st.toast("Rate limit reached (max 6 requests/min). Wait a moment.", icon="⏳")
+            with chat_container:
+                st.warning("Rate limit reached (max 6 requests/min). Wait a moment before sending another message.")
+        # 3. Check rapid-fire interval (cooldown gap)
+        elif (
+            st.session_state.request_timestamps
+            and (now - st.session_state.request_timestamps[-1]) < COOLDOWN_SECONDS
+        ):
+            st.toast(f"Pause {COOLDOWN_SECONDS:.0f} seconds between messages.", icon="⏱️")
+        else:
+            st.session_state.request_timestamps.append(now)
+
+            # Display user message immediately
+            st.session_state.chat_history.append({"role": "user", "content": user_prompt})
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(user_prompt)
+
+                # 3. Formulate Query with Active Context
+                # If user didn't mention customer ID, attach it as context for agent
+                if active_id not in user_prompt:
+                    agent_query = (
+                        f"[Active Customer Context: Account ID '{active_id}', "
+                        f"Name: {customer_record.get('full_name', '')}]\n"
+                        f"{user_prompt}"
+                    )
+                else:
+                    agent_query = user_prompt
+
+                # 4. Invoke Agent through State-Envelope Sandwich Guardrails
+                last_ai_msg = next(
+                    (m["content"] for m in reversed(st.session_state.chat_history) if m["role"] == "assistant"),
+                    "None - Conversation start",
                 )
-            else:
-                agent_query = user_prompt
+                session_envelope = {
+                    "active_customer": f"{active_id}, {customer_record.get('full_name', '')}, {pred.get('risk_tier', '')}",
+                    "customer_id": active_id,
+                    "workflow_state": "Evaluating Retention Offer & Account Support",
+                    "last_assistant_message": last_ai_msg,
+                }
 
-            # 4. Invoke Agent through State-Envelope Sandwich Guardrails
-            last_ai_msg = next(
-                (m["content"] for m in reversed(st.session_state.chat_history) if m["role"] == "assistant"),
-                "None - Conversation start",
-            )
-            session_envelope = {
-                "active_customer": f"{active_id}, {customer_record.get('full_name', '')}, {pred.get('risk_tier', '')}",
-                "customer_id": active_id,
-                "workflow_state": "Evaluating Retention Offer & Account Support",
-                "last_assistant_message": last_ai_msg,
-            }
+                with st.chat_message("assistant"):
+                    with st.spinner("Analyzing the customer profile and searching policies..."):
+                        sources = []
+                        try:
+                            # Initialize the agent only for chat requests; missing Azure
+                            # credentials are handled by the existing exception message.
+                            agent = get_agent()
+                            result_payload = agent.chat(
+                                message=agent_query,
+                                thread_id=f"session_thread_{active_id}",
+                                session_state=session_envelope,
+                                return_details=True,
+                            )
+                            if isinstance(result_payload, dict):
+                                response_text = result_payload.get("response", "")
+                                sources = result_payload.get("retrieval_sources", [])
+                            else:
+                                response_text = str(result_payload)
+                        except Exception as err:
+                            response_text = (
+                                "An error occurred while contacting the AI assistant. "
+                                "Check the Azure configuration in the .env file and try again. "
+                                f"Error type: {type(err).__name__}."
+                            )
 
-            with st.chat_message("assistant"):
-                with st.spinner("Analyzing the customer profile and searching policies..."):
-                    try:
-                        # Initialize the agent only for chat requests; missing Azure
-                        # credentials are handled by the existing exception message.
-                        agent = get_agent()
-                        response_text = agent.chat(
-                            message=agent_query,
-                            thread_id=f"session_thread_{active_id}",
-                            session_state=session_envelope,
-                        )
-                    except Exception as err:
-                        response_text = (
-                            "An error occurred while contacting the AI assistant. "
-                            "Check the Azure configuration in the .env file and try again. "
-                            f"Error type: {type(err).__name__}."
-                        )
+                        st.markdown(response_text)
+                        if sources:
+                            with st.expander("📄 Retrieved Policy Excerpts (RAG)", expanded=False):
+                                render_policy_citation_cards(sources)
 
-                    st.markdown(response_text)
-
-        # Append assistant response to history
-        st.session_state.chat_history.append({"role": "assistant", "content": response_text})
+            # Append assistant response and sources to history
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": response_text,
+                "sources": sources,
+            })
