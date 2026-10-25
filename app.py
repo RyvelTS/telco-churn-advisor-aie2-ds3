@@ -416,7 +416,7 @@ with col2:
                 if active_id not in user_prompt:
                     agent_query = (
                         f"[Active Customer Context: Account ID '{active_id}', "
-                        f"Name: {customer_record.get('full_name', '')}]\n"
+                        f"Name: [CUSTOMER_NAME]]\n"
                         f"{user_prompt}"
                     )
                 else:
@@ -428,8 +428,9 @@ with col2:
                     "None - Conversation start",
                 )
                 session_envelope = {
-                    "active_customer": f"{active_id}, {customer_record.get('full_name', '')}, {pred.get('risk_tier', '')}",
+                    "active_customer": f"Account {active_id}, Risk Tier: {pred.get('risk_tier', '')}",
                     "customer_id": active_id,
+                    "customer_name": customer_record.get("full_name", "") if customer_record else "",
                     "workflow_state": "Evaluating Retention Offer & Account Support",
                     "last_assistant_message": last_ai_msg,
                 }

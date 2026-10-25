@@ -102,8 +102,8 @@ def get_customer_churn_profile(customer_id: str) -> str:
 
     summary = (
         f"=== Customer Profile & Churn Assessment: {cleaned_id} ===\n"
-        f"• Customer Name: {customer_record.get('full_name', 'N/A')}\n"
-        f"• Contact: Email: {customer_record.get('email', 'N/A')}, Phone: {customer_record.get('phone', 'N/A')}\n"
+        f"• Customer Name: [CUSTOMER_NAME]\n"
+        f"• Contact: [REDACTED FOR PRIVACY]\n"
         f"• Account Tenure: {customer_record.get('tenure', 0)} months\n"
         f"• Contract Type: {customer_record.get('Contract', 'N/A')}\n"
         f"• Payment Method: {customer_record.get('PaymentMethod', 'N/A')}\n"

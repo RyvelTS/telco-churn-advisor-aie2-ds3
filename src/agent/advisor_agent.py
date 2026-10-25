@@ -7,7 +7,7 @@ from langgraph.prebuilt import create_react_agent
 
 from src.agent.guardrails import SandwichGuardrail
 from src.agent.prompts import AGENT_SYSTEM_PROMPT
-from src.agent.tools import get_customer_churn_profile, search_retention_policies
+from src.agent.tools import get_customer_churn_profile, get_repository, search_retention_policies
 from src.config import (
     AZURE_OPENAI_API_KEY,
     AZURE_OPENAI_API_VERSION,
@@ -180,6 +180,25 @@ class TelecomAdvisorAgent:
         # ======================================================================
         is_compliant, verified_response, _ = self.guardrail.validate_output(candidate_response)
         final_text = str(verified_response) if is_compliant else (verified_response or "")
+
+        # ======================================================================
+        # STAGE 4: PII De-tokenization (Re-hydrate [CUSTOMER_NAME] for CSR display)
+        # ======================================================================
+        target_name = envelope.get("customer_name") or envelope.get("real_name")
+        if not target_name and envelope.get("customer_id"):
+            try:
+                repo = get_repository()
+                rec = repo.get_customer_by_id(str(envelope["customer_id"]).strip().upper())
+                if rec:
+                    target_name = rec.get("full_name")
+            except Exception:
+                pass
+
+        if target_name:
+            final_text = (
+                final_text.replace("[CUSTOMER_NAME]", target_name)
+                .replace("<CUSTOMER_NAME>", target_name)
+            )
 
         if return_details:
             return {

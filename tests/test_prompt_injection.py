@@ -11,7 +11,7 @@ from src.config import validate_azure_credentials
 
 
 def test_tool_customer_churn_profile():
-    """Verify Tool 1 queries SQLite and outputs t* = 0.17 decision."""
+    """Verify Tool 1 queries SQLite and outputs t* = 0.17 decision with PII masked."""
     result = get_customer_churn_profile.invoke({"customer_id": "7590-VHVEG"})
 
     assert "Customer Profile & Churn Assessment: 7590-VHVEG" in result
@@ -19,6 +19,11 @@ def test_tool_customer_churn_profile():
     assert "t* = 0.17" in result
     assert "Retention Action Required: True" in result
     assert "Risk Tier: Moderate Risk" in result
+    # Verify PII masking prevents raw personal identifiers from reaching the LLM
+    assert "• Customer Name: [CUSTOMER_NAME]" in result
+    assert "• Contact: [REDACTED FOR PRIVACY]" in result
+    assert "@" not in result
+    assert "+1-" not in result
 
 
 def test_tool_customer_churn_profile_missing():
@@ -196,3 +201,33 @@ def test_agent_end_to_end_legitimate_retention_workflow():
         or "churn" in lower_resp
         or "retention" in lower_resp
     )
+
+
+def test_advisor_agent_pii_detokenization():
+    """Verify that TelecomAdvisorAgent re-hydrates [CUSTOMER_NAME] before final response."""
+    from unittest.mock import MagicMock
+    from langchain_core.messages import AIMessage
+
+    mock_guardrail = MagicMock()
+    mock_guardrail.validate_input.return_value = (True, "", {})
+    mock_guardrail.validate_output.return_value = (
+        True,
+        "I reviewed account [CUSTOMER_NAME] and prepared a retention offer.",
+        {},
+    )
+
+    agent = TelecomAdvisorAgent(guardrail=mock_guardrail)
+    agent.graph = MagicMock()
+    agent.graph.invoke.return_value = {
+        "messages": [
+            AIMessage(content="I reviewed account [CUSTOMER_NAME] and prepared a retention offer.")
+        ]
+    }
+
+    response = agent.chat(
+        message="What is the retention offer for customer 7590-VHVEG?",
+        session_state={"customer_name": "Jane Doe", "customer_id": "7590-VHVEG"},
+    )
+
+    assert "[CUSTOMER_NAME]" not in response
+    assert "Jane Doe" in response
