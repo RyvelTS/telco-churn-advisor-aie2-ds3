@@ -389,3 +389,17 @@ This table maps each project certification requirement to its implementation in 
     ├── test_prompt_injection.py          # Security guardrail & jailbreak defense tests
     └── test_rag.py                       # RAG document loader, chunking & retriever tests
 ```
+
+## Team Information
+
+**Team Name:** Hello World AI  
+**Program:** Digital Skola — Fullstack AI Engineer
+
+### Team Members
+
+- [Ryvel Timothy]
+- [Saipullah]
+- [Fadhil Syafwi]
+- [Anindha Arsya]
+
+---
