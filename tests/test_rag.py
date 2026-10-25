@@ -116,3 +116,28 @@ def test_retriever_fallback_source_when_missing():
     output = retriever.search("policy details")
 
     assert "[Policy Excerpt 1 (Source: Unknown Policy Document)]:" in output
+
+
+def test_ensure_index_ready_when_missing_credentials(monkeypatch):
+    """Verify ensure_index_ready returns False gracefully when Azure credentials missing."""
+    from src.rag.indexer import ensure_index_ready
+
+    monkeypatch.setattr("src.config.AZURE_SEARCH_ENDPOINT", "")
+    monkeypatch.setattr("src.config.AZURE_SEARCH_KEY", "")
+
+    result = ensure_index_ready()
+    assert result is False
+
+
+def test_ensure_index_ready_skips_when_already_populated(monkeypatch):
+    """Verify ensure_index_ready skips re-indexing when index contains documents."""
+    from src.rag.indexer import ensure_index_ready
+
+    monkeypatch.setattr(
+        "src.config.validate_azure_credentials",
+        lambda: {"valid": True, "missing_keys": []},
+    )
+    monkeypatch.setattr("src.rag.indexer.is_index_populated", lambda: True)
+
+    result = ensure_index_ready()
+    assert result is True
