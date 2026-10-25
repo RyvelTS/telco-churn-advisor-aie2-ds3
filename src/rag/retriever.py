@@ -86,10 +86,9 @@ class AzurePolicyRetriever:
             formatted_excerpts = []
             for i, doc in enumerate(docs, 1):
                 source = doc.metadata.get("source", "Unknown Policy Document")
-                page = doc.metadata.get("page", 1)
                 content = doc.page_content.strip()
 
-                header = f"[Policy Excerpt {i} (Source: {source}, Page: {page})]"
+                header = f"[Policy Excerpt {i} (Source: {source})]"
                 formatted_excerpts.append(f"{header}:\n{content}")
 
             return "\n\n---\n\n".join(formatted_excerpts)

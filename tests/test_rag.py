@@ -60,26 +60,26 @@ def test_semantic_chunking_strategy():
 
 
 def test_retriever_formatting_with_mock_vector_store():
-    """Verify AzurePolicyRetriever formats output properly with source citations."""
+    """Verify AzurePolicyRetriever formats output properly with clean document source citations."""
     mock_vs = MagicMock()
     mock_vs.similarity_search.return_value = [
         Document(
             page_content="Customers with tenure > 24 months are eligible for Fiber upgrade discount.",
-            metadata={"source": "retention_policy.pdf", "page": 2},
+            metadata={"source": "retention_policy.pdf"},
         ),
         Document(
             page_content="Early termination fee is waived for moving to non-serviceable areas.",
-            metadata={"source": "plan_comparison.pdf", "page": 4},
+            metadata={"source": "plan_comparison.pdf"},
         ),
     ]
 
     retriever = AzurePolicyRetriever(top_k=2, vector_store=mock_vs)
     output = retriever.search("retention discount")
 
-    assert "[Policy Excerpt 1 (Source: retention_policy.pdf, Page: 2)]:" in output
+    assert "[Policy Excerpt 1 (Source: retention_policy.pdf)]:" in output
     assert "Fiber upgrade discount" in output
     assert "\n\n---\n\n" in output
-    assert "[Policy Excerpt 2 (Source: plan_comparison.pdf, Page: 4)]:" in output
+    assert "[Policy Excerpt 2 (Source: plan_comparison.pdf)]:" in output
     assert "Early termination fee is waived" in output
 
 
@@ -100,3 +100,19 @@ def test_retriever_handles_exception_gracefully():
 
     assert "Policy retrieval currently unavailable" in result
     assert "Azure Search connection timed out" in result
+
+
+def test_retriever_fallback_source_when_missing():
+    """Verify that documents without explicit source metadata fallback to 'Unknown Policy Document'."""
+    mock_vs = MagicMock()
+    mock_vs.similarity_search.return_value = [
+        Document(
+            page_content="Policy starting page content",
+            metadata={},
+        ),
+    ]
+
+    retriever = AzurePolicyRetriever(top_k=1, vector_store=mock_vs)
+    output = retriever.search("policy details")
+
+    assert "[Policy Excerpt 1 (Source: Unknown Policy Document)]:" in output

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import AzureChatOpenAI
@@ -7,7 +7,7 @@ from langgraph.prebuilt import create_react_agent
 
 from src.agent.guardrails import SandwichGuardrail
 from src.agent.prompts import AGENT_SYSTEM_PROMPT
-from src.agent.tools import get_customer_churn_profile, search_retention_policies
+from src.agent.tools import get_customer_churn_profile, get_repository, search_retention_policies
 from src.config import (
     AZURE_OPENAI_API_KEY,
     AZURE_OPENAI_API_VERSION,
@@ -113,21 +113,24 @@ class TelecomAdvisorAgent:
         message: str,
         thread_id: str = "default",
         session_state: Optional[Dict[str, Any]] = None,
-    ) -> str:
+        return_details: bool = False,
+    ) -> Union[str, Dict[str, Any]]:
         """Executes the complete sandwich-guarded reasoning lifecycle:
 
         1. Stage 1: Input Guardrail intercepts malicious or off-topic queries using state-envelope context.
-        2. Stage 2: Agent ReAct Engine invokes tools & formulates candidate solution.
+        2. Stage 2: Agent Engine invokes tools & formulates candidate solution.
         3. Stage 3: Output Guardrail enforces compliance against concessions & prompt leaks.
-        4. Returns verified final response.
+        4. Returns verified final response and optional policy retrieval sources.
 
         Args:
             message (str): User or customer service representative message.
             thread_id (str): Thread ID for conversation memory persistence.
             session_state (Optional[Dict[str, Any]]): Optional state envelope with active customer details.
+            return_details (bool): If True, returns a dictionary with response and retrieval sources.
 
         Returns:
-            str: Verified response or deterministic security fallback string.
+            Union[str, Dict[str, Any]]: Verified response string (if return_details=False) or dictionary
+                {"response": str, "retrieval_sources": List[str]} (if return_details=True).
         """
         envelope = self._assemble_state_envelope(thread_id, session_state)
 
@@ -136,12 +139,14 @@ class TelecomAdvisorAgent:
         # ======================================================================
         is_safe, error_msg, _ = self.guardrail.validate_input(message, session_state=envelope)
         if not is_safe:
-            return error_msg or ""
+            fallback = error_msg or ""
+            return {"response": fallback, "retrieval_sources": []} if return_details else fallback
 
         # ======================================================================
-        # STAGE 2: ReAct Agent Reasoning & Tool Execution
+        # STAGE 2: Autonomous Agent Reasoning & Tool Execution
         # ======================================================================
         config = {"configurable": {"thread_id": thread_id}}
+        policy_sources: List[str] = []
         try:
             result = self.graph.invoke(
                 {"messages": [HumanMessage(content=message)]},
@@ -154,17 +159,51 @@ class TelecomAdvisorAgent:
                     part.get("text", "") if isinstance(part, dict) else str(part)
                     for part in candidate_response
                 )
+
+            # Extract any policy excerpts returned by Azure AI Search RAG
+            for msg in result.get("messages", []):
+                msg_name = getattr(msg, "name", None)
+                if msg_name == "search_retention_policies" and getattr(msg, "content", None):
+                    content_str = str(msg.content).strip()
+                    if content_str and content_str != "No matching company policy or retention terms found.":
+                        policy_sources.append(content_str)
+
         except Exception as e:
-            return (
+            err_msg = (
                 f"I encountered a temporary service error processing your request: {e}. "
                 "Verify system credentials and retry."
             )
+            return {"response": err_msg, "retrieval_sources": []} if return_details else err_msg
 
         # ======================================================================
         # STAGE 3: Output Guardrail Verification
         # ======================================================================
         is_compliant, verified_response, _ = self.guardrail.validate_output(candidate_response)
-        if not is_compliant:
-            return verified_response or ""
+        final_text = str(verified_response) if is_compliant else (verified_response or "")
 
-        return str(verified_response)
+        # ======================================================================
+        # STAGE 4: PII De-tokenization (Re-hydrate [CUSTOMER_NAME] for CSR display)
+        # ======================================================================
+        target_name = envelope.get("customer_name") or envelope.get("real_name")
+        if not target_name and envelope.get("customer_id"):
+            try:
+                repo = get_repository()
+                rec = repo.get_customer_by_id(str(envelope["customer_id"]).strip().upper())
+                if rec:
+                    target_name = rec.get("full_name")
+            except Exception:
+                pass
+
+        if target_name:
+            final_text = (
+                final_text.replace("[CUSTOMER_NAME]", target_name)
+                .replace("<CUSTOMER_NAME>", target_name)
+            )
+
+        if return_details:
+            return {
+                "response": final_text,
+                "retrieval_sources": policy_sources if is_compliant else [],
+            }
+
+        return final_text
