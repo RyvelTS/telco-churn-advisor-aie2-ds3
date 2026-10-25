@@ -236,8 +236,8 @@ When a security threshold is breached, the guardrail stops execution and returns
 
 ```bash
 # Clone repository
-git clone https://github.com/RyvelTS/telecom-churn-advisor.git
-cd telecom-churn-advisor
+git clone https://github.com/RyvelTS/telco-churn-advisor-aie2-ds3.git
+cd telco-churn-advisor-aie2-ds3
 
 # Initialize Python 3.11 virtual environment
 python3.11 -m venv venv
