@@ -402,6 +402,7 @@ This table maps each project certification requirement to its implementation in 
 
 **Team Name:** Hello World AI
 **Program:** Digital Skola — Fullstack AI Engineer
+**Final Project:** TELECOM - CHURN ADVISOR
 
 ### Team Members
 
